@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>AR Crucero de Dos Semáforos con Peatones | VH-20AR + EMT8050iE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.8/aframe/build/aframe-ar.js"></script>
+  <style>
+    body { margin:0; overflow:hidden; font-family: Arial, sans-serif; }
+    #panel {
+      position: fixed; left: 10px; top: 10px; z-index: 10;
+      width: 310px; background: rgba(0,20,45,.88); color:white;
+      padding: 12px; border-radius: 10px; font-size: 14px;
+    }
+    #panel h2 { margin: 0 0 8px; font-size: 18px; color:#ffd34d; }
+    #panel button {
+      margin: 4px 3px; padding: 8px 10px; border:0; border-radius:6px;
+      background:#0aa346; color:white; font-weight:bold;
+    }
+    #panel .danger { background:#b71c1c; }
+    #panel .gray { background:#606060; }
+  </style>
+
+  <script>
+    AFRAME.registerComponent('traffic-controller', {
+      schema: { stage: {type: 'int', default: 0}, emergency: {type: 'boolean', default: false} },
+      init: function () {
+        this.t = 0;
+        window.arPLC = this;
+        this.updateLights();
+      },
+      tick: function (time, delta) {
+        if (this.data.emergency) return;
+        this.t += delta / 1000;
+        let duration = [30, 3, 30, 3][this.data.stage];
+        if (this.t >= duration) {
+          this.t = 0;
+          this.data.stage = (this.data.stage + 1) % 4;
+          this.updateLights();
+        }
+        this.updateText(duration);
+      },
+      setStage: function(stage) { this.data.stage = stage; this.t = 0; this.data.emergency = false; this.updateLights(); },
+      emergency: function() { this.data.emergency = true; this.setAllRed(); document.getElementById('estado').innerText = 'PARO DE EMERGENCIA'; },
+      reset: function() { this.data.emergency = false; this.setStage(0); document.getElementById('estado').innerText = 'AUTOMÁTICO'; },
+      mat: function(id, color) { document.querySelector('#'+id).setAttribute('material', 'color', color + '; emissive:' + color + '; emissiveIntensity:0.8'); },
+      off: function(id) { document.querySelector('#'+id).setAttribute('material', 'color:#222; emissive:#000; emissiveIntensity:0'); },
+      setAllRed: function() {
+        ['nsG','nsY','eoG','eoY','p1G','p2G'].forEach(x=>this.off(x));
+        ['nsR','eoR','p1R','p2R'].forEach(x=>this.mat(x,'#ff0000'));
+      },
+      updateLights: function() {
+        this.setAllRed();
+        let s = this.data.stage;
+        if (s === 0) { this.mat('nsG','#00ff00'); this.off('nsR'); }
+        if (s === 1) { this.mat('nsY','#ffff00'); this.off('nsR'); }
+        if (s === 2) { this.mat('eoG','#00ff00'); this.off('eoR'); this.mat('p2G','#00ff00'); this.off('p2R'); }
+        if (s === 3) { this.mat('eoY','#ffff00'); this.off('eoR'); }
+        document.getElementById('etapa').innerText = s;
+      },
+      updateText: function(duration) {
+        document.getElementById('tiempo').innerText = Math.max(0, Math.ceil(duration - this.t));
+      }
+    });
+
+    function etapa(n){ if(window.arPLC) window.arPLC.setStage(n); }
+    function paro(){ if(window.arPLC) window.arPLC.emergency(); }
+    function reset(){ if(window.arPLC) window.arPLC.reset(); }
+  </script>
+</head>
+
+<body>
+  <div id="panel">
+    <h2>Práctica AR: Crucero PLC-HMI</h2>
+    <div><b>PLC:</b> Vigor Electric VH-20AR</div>
+    <div><b>HMI:</b> Weintek EMT8050iE</div>
+    <div><b>Etapa actual:</b> <span id="etapa">0</span></div>
+    <div><b>Tiempo restante:</b> <span id="tiempo">30</span> s</div>
+    <div><b>Estado:</b> <span id="estado">AUTOMÁTICO</span></div>
+    <button onclick="etapa(0)">Etapa 0</button>
+    <button onclick="etapa(1)">Etapa 1</button>
+    <button onclick="etapa(2)">Etapa 2</button>
+    <button onclick="etapa(3)">Etapa 3</button>
+    <button class="danger" onclick="paro()">Paro</button>
+    <button class="gray" onclick="reset()">Reiniciar</button>
+  </div>
+
+  <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+    <a-marker preset="hiro">
+      <a-entity traffic-controller></a-entity>
+
+      <!-- Base del crucero -->
+      <a-plane position="0 0 0" rotation="-90 0 0" width="5" height="5" color="#2e2e2e"></a-plane>
+      <a-plane position="0 0.01 0" rotation="-90 0 0" width="1.0" height="5" color="#1f1f1f"></a-plane>
+      <a-plane position="0 0.02 0" rotation="-90 0 90" width="1.0" height="5" color="#1f1f1f"></a-plane>
+
+      <!-- Líneas -->
+      <a-box position="0 0.04 -1.35" width=".05" height=".02" depth=".7" color="#ffd400"></a-box>
+      <a-box position="0 0.04 1.35" width=".05" height=".02" depth=".7" color="#ffd400"></a-box>
+      <a-box position="-1.35 0.04 0" width=".7" height=".02" depth=".05" color="#ffd400"></a-box>
+      <a-box position="1.35 0.04 0" width=".7" height=".02" depth=".05" color="#ffd400"></a-box>
+
+      <!-- Cruces peatonales -->
+      <a-box position="0 -0.01 -0.75" width="1.2" height=".03" depth=".08" color="#ffffff"></a-box>
+      <a-box position="0 -0.01 0.75" width="1.2" height=".03" depth=".08" color="#ffffff"></a-box>
+      <a-box position="-0.75 -0.01 0" width=".08" height=".03" depth="1.2" color="#ffffff"></a-box>
+      <a-box position="0.75 -0.01 0" width=".08" height=".03" depth="1.2" color="#ffffff"></a-box>
+
+      <!-- Autos -->
+      <a-box position="0.35 0.16 -1.45" width=".35" height=".20" depth=".65" color="#d11"></a-box>
+      <a-box position="-1.45 0.16 0.35" width=".65" height=".20" depth=".35" color="#1266cc"></a-box>
+
+      <!-- Semáforo NS -->
+      <a-cylinder position="-.72 .45 -.72" radius=".035" height=".8" color="#555"></a-cylinder>
+      <a-box position="-.72 .9 -.72" width=".23" height=".55" depth=".12" color="#111"></a-box>
+      <a-sphere id="nsR" position="-.72 1.08 -.79" radius=".065"></a-sphere>
+      <a-sphere id="nsY" position="-.72 .91 -.79" radius=".065"></a-sphere>
+      <a-sphere id="nsG" position="-.72 .74 -.79" radius=".065"></a-sphere>
+
+      <!-- Semáforo EO -->
+      <a-cylinder position=".72 .45 .72" radius=".035" height=".8" color="#555"></a-cylinder>
+      <a-box position=".72 .9 .72" width=".23" height=".55" depth=".12" color="#111"></a-box>
+      <a-sphere id="eoR" position=".72 1.08 .65" radius=".065"></a-sphere>
+      <a-sphere id="eoY" position=".72 .91 .65" radius=".065"></a-sphere>
+      <a-sphere id="eoG" position=".72 .74 .65" radius=".065"></a-sphere>
+
+      <!-- Peatones -->
+      <a-box position="-1.2 .55 .9" width=".23" height=".38" depth=".10" color="#111"></a-box>
+      <a-sphere id="p1R" position="-1.25 .62 .84" radius=".055"></a-sphere>
+      <a-sphere id="p1G" position="-1.15 .62 .84" radius=".055"></a-sphere>
+
+      <a-box position="1.2 .55 -.9" width=".23" height=".38" depth=".10" color="#111"></a-box>
+      <a-sphere id="p2R" position="1.15 .62 -.84" radius=".055"></a-sphere>
+      <a-sphere id="p2G" position="1.25 .62 -.84" radius=".055"></a-sphere>
+
+      <!-- PLC y HMI virtuales -->
+      <a-box position="-1.75 .25 -1.75" width=".9" height=".45" depth=".12" color="#111"></a-box>
+      <a-text value="PLC VH-20AR\nLadder Master" position="-2.12 .28 -1.68" rotation="-30 0 0" width="2" color="#ffffff"></a-text>
+
+      <a-box position="1.75 .28 1.75" width="1.1" height=".65" depth=".12" color="#07345f"></a-box>
+      <a-text value="HMI EMT8050iE\nEtapa / Alarmas / Reinicio" position="1.27 .36 1.83" rotation="-30 0 0" width="2" color="#ffffff"></a-text>
+
+      <a-text value="Crucero de dos semaforos con peatones" position="-1.8 1.45 0" rotation="-35 0 0" width="3.8" color="#ffd34d"></a-text>
+    </a-marker>
+
+    <a-entity camera></a-entity>
+  </a-scene>
+</body>
+</html>
